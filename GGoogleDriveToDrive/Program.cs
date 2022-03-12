@@ -22,7 +22,7 @@ namespace GGoogleDriveToDrive
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
         static DriveService Service;
         static FilesResource FilesProvider;
-        static Dictionary<string, Google.Apis.Drive.v3.Data.File> FilesCache = new();
+        static Dictionary<string, Google.Apis.Drive.v3.Data.File> FilesCache = new Dictionary<string, Google.Apis.Drive.v3.Data.File>();
         static Google.Apis.Drive.v3.Data.File DownloadingFile;
 
         static Dictionary<string, ExportTypeConfig> MimeTypesConvertMap;
@@ -31,7 +31,7 @@ namespace GGoogleDriveToDrive
         {
             using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
             {
-                JsonSerializer serializer = new();
+                JsonSerializer serializer = new JsonSerializer();
                 MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
             }
 
@@ -122,15 +122,17 @@ namespace GGoogleDriveToDrive
 
             DownloadingFile = gFile;
 
-            using FileStream file = new(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
-            if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
+            using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
             {
-                ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
-            }
-            else
-            {
-                ExecuteDownload(file, gFile);
-            }
+                if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
+                {
+                    ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+                }
+                else
+                {
+                    ExecuteDownload(file, gFile);
+                }
+            } 
         }
 
         static void ExecuteExport(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
@@ -158,7 +160,7 @@ namespace GGoogleDriveToDrive
             }
             else
             {
-                FileInfo fileInfo = new(fileStream.Name);
+                FileInfo fileInfo = new FileInfo(fileStream.Name);
                 if (gFile.CreatedTime.HasValue)
                 {
                     fileInfo.CreationTime = gFile.CreatedTime.Value;
@@ -202,7 +204,7 @@ namespace GGoogleDriveToDrive
                 return name;
             }
 
-            Stack<string> pathQueue = new();
+            Stack<string> pathQueue = new Stack<string>();
             pathQueue.Push(name);
 
             while (true)
