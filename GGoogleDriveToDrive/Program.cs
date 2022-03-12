@@ -30,14 +30,15 @@ namespace GGoogleDriveToDrive
 
         static void Main(string[] args)
         {
-            Logging("Start command.");
+            Init();
+            GoogleDriveApiInit();
+            Console.WriteLine();
+            Processing();
+            Console.Read();
+        }
 
-            using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
-            {
-                JsonSerializer serializer = new JsonSerializer();
-                MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
-            }
-
+        static void GoogleDriveApiInit()
+        {
             UserCredential credential;
 
             using (var stream = new FileStream("credentials.json", FileMode.Open, FileAccess.Read))
@@ -59,41 +60,45 @@ namespace GGoogleDriveToDrive
                 ApplicationName = ApplicationName,
             });
 
+            FilesProvider = Service.Files;
+        }
+
+        static void Init()
+        {
+            Logging("Start command.");
+
+            using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
+            {
+                JsonSerializer serializer = new JsonSerializer();
+                MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
+            }
             if (Directory.Exists(DownloadsFolder))
             {
                 Directory.Delete(DownloadsFolder, true);
             }
             Directory.CreateDirectory(DownloadsFolder);
+        }
 
-            FilesProvider = Service.Files;
-
+        static void Processing()
+        {
             // Define parameters of request.
             FilesResource.ListRequest listRequest = FilesProvider.List();
             listRequest.PageSize = 100;
             listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, parents)";
 
+            int startLineCursor = Console.CursorTop;
+            int itemsCount = 0;
+
             FileList fileList = listRequest.Execute();
             IList<Google.Apis.Drive.v3.Data.File> files = fileList.Files;
-
-            Console.WriteLine();
-            int startLineCursor = Console.CursorTop;
             Console.WriteLine("Processing...");
             Logging("Processing...");
-
-            int itemsCount = 0;
             int startPartLineCursor = Console.CursorTop;
-            int currentLineCursor = -1;
             while (files != null && files.Count > 0)
             {
                 foreach (var file in files)
                 {
-                    currentLineCursor = Console.CursorTop;
-                    for (int lineN = startPartLineCursor; lineN < currentLineCursor; lineN++)
-                    {
-                        Console.SetCursorPosition(0, lineN);
-                        for (int i = 0; i < Console.WindowWidth; i++)
-                            Console.Write(" ");
-                    }
+                    ClearLines(startPartLineCursor);
                     Console.SetCursorPosition(0, startPartLineCursor);
                     string itemLine = $"[{++itemsCount}] \"{file.Name}\" (Id: \"{file.Id}\" {file.Size} bytes {file.MimeType})";
                     Console.WriteLine(itemLine);
@@ -106,20 +111,27 @@ namespace GGoogleDriveToDrive
                 files = fileList.Files;
             }
 
-            currentLineCursor = Console.CursorTop;
+            ClearLines(startLineCursor);
+            FinishPrint(itemsCount);
+        }
+
+        static void FinishPrint(int itemsCount)
+        {
+            Console.WriteLine("Done!");
+            Logging("Done!");
+            Console.WriteLine($"Processed {itemsCount} items.");
+            Logging($"Processed {itemsCount} items.");
+        }
+
+        static void ClearLines(int startLineCursor)
+        {
+            int currentLineCursor = Console.CursorTop;
             for (int lineN = startLineCursor; lineN < currentLineCursor; lineN++)
             {
                 Console.SetCursorPosition(0, lineN);
                 for (int i = 0; i < Console.WindowWidth; i++)
                     Console.Write(" ");
             }
-
-            Console.WriteLine("Done!");
-            Logging("Done!");
-            Console.WriteLine($"Processed {itemsCount} items.");
-            Logging($"Processed {itemsCount} items.");
-
-            Console.Read();
         }
 
         static void PullContentToDrive(Google.Apis.Drive.v3.Data.File gFile)
