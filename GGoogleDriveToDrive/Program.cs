@@ -4,6 +4,7 @@ using Google.Apis.Drive.v3;
 using Google.Apis.Drive.v3.Data;
 using Google.Apis.Services;
 using Google.Apis.Util.Store;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,21 +18,23 @@ namespace GGoogleDriveToDrive
     {
         const string ApplicationName = "GGoogleDriveToDrive";
         const string DownloadsFolder = "Downloads";
+        const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
         static DriveService Service;
         static FilesResource FilesProvider;
         static Dictionary<string, Google.Apis.Drive.v3.Data.File> FilesCache = new();
         static Google.Apis.Drive.v3.Data.File DownloadingFile;
 
-        static Dictionary<string, ExportTypeConfig> MimeTypesConvertMap = new()
-        {
-            { "application/vnd.google-apps.document", new ExportTypeConfig("application/vnd.openxmlformats-officedocument.wordprocessingml.document", "docx") },
-            { "application/vnd.google-apps.spreadsheet", new ExportTypeConfig("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "xlsx") },
-            { "application/vnd.google-apps.presentation", new ExportTypeConfig("application/vnd.openxmlformats-officedocument.presentationml.presentation", "ppsx") }
-        };
+        static Dictionary<string, ExportTypeConfig> MimeTypesConvertMap;
 
         static void Main(string[] args)
         {
+            using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
+            {
+                JsonSerializer serializer = new();
+                MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
+            }
+
             UserCredential credential;
 
             using (var stream = new FileStream("credentials.json", FileMode.Open, FileAccess.Read))
@@ -222,19 +225,6 @@ namespace GGoogleDriveToDrive
                 default:
                     break;
             }
-        }
-    }
-
-    public struct ExportTypeConfig
-    {
-        public string MimeType;
-
-        public string FileExtension;
-
-        public ExportTypeConfig(string mimeType, string fileExtension)
-        {
-            MimeType = mimeType;
-            FileExtension = fileExtension;
         }
     }
 }
