@@ -19,6 +19,7 @@ namespace GGoogleDriveToDrive
         const string ApplicationName = "GGoogleDriveToDrive";
         const string DownloadsFolder = "Downloads";
         const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
+        const string LoggingFileName = "logging.txt";
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
         static DriveService Service;
         static FilesResource FilesProvider;
@@ -29,6 +30,8 @@ namespace GGoogleDriveToDrive
 
         static void Main(string[] args)
         {
+            Logging("Start command.");
+
             using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
             {
                 JsonSerializer serializer = new JsonSerializer();
@@ -71,11 +74,30 @@ namespace GGoogleDriveToDrive
 
             FileList fileList = listRequest.Execute();
             IList<Google.Apis.Drive.v3.Data.File> files = fileList.Files;
+
+            Console.WriteLine();
+            int startLineCursor = Console.CursorTop;
+            Console.WriteLine("Processing...");
+            Logging("Processing...");
+
+            int itemsCount = 0;
+            int startPartLineCursor = Console.CursorTop;
+            int currentLineCursor = -1;
             while (files != null && files.Count > 0)
             {
                 foreach (var file in files)
                 {
-                    Console.WriteLine($"{file.Id} {file.Size} {file.MimeType} \"{file.Name}\"");
+                    currentLineCursor = Console.CursorTop;
+                    for (int lineN = startPartLineCursor; lineN < currentLineCursor; lineN++)
+                    {
+                        Console.SetCursorPosition(0, lineN);
+                        for (int i = 0; i < Console.WindowWidth; i++)
+                            Console.Write(" ");
+                    }
+                    Console.SetCursorPosition(0, startPartLineCursor);
+                    string itemLine = $"[{++itemsCount}] \"{file.Name}\" (Id: \"{file.Id}\" {file.Size} bytes {file.MimeType})";
+                    Console.WriteLine(itemLine);
+                    Logging(itemLine);
                     PullContentToDrive(file);
                 }
 
@@ -83,6 +105,20 @@ namespace GGoogleDriveToDrive
                 fileList = listRequest.Execute();
                 files = fileList.Files;
             }
+
+            currentLineCursor = Console.CursorTop;
+            for (int lineN = startLineCursor; lineN < currentLineCursor; lineN++)
+            {
+                Console.SetCursorPosition(0, lineN);
+                for (int i = 0; i < Console.WindowWidth; i++)
+                    Console.Write(" ");
+            }
+
+            Console.WriteLine("Done!");
+            Logging("Done!");
+            Console.WriteLine($"Processed {itemsCount} items.");
+            Logging($"Processed {itemsCount} items.");
+
             Console.Read();
         }
 
@@ -94,16 +130,9 @@ namespace GGoogleDriveToDrive
                 return;
             }
 
-            string fileName;
-            if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
-            {
-                var typeConfig = MimeTypesConvertMap[gFile.MimeType];
-                fileName = gFile.Name + '.' + typeConfig.FileExtension;
-            }
-            else
-            {
-                fileName = gFile.Name;
-            }
+            string fileName = MimeTypesConvertMap.ContainsKey(gFile.MimeType)
+                ? gFile.Name + '.' + MimeTypesConvertMap[gFile.MimeType].FileExtension
+                : gFile.Name;
             fileName = MakeValidFileName(fileName);
 
             string parentId = gFile.Parents?.FirstOrDefault();
@@ -257,16 +286,24 @@ namespace GGoogleDriveToDrive
                 case DownloadStatus.NotStarted:
                     break;
                 case DownloadStatus.Downloading:
-                    Console.WriteLine(progress.Status + " " + progress.BytesDownloaded);
+                    Logging($"{progress.Status} {progress.BytesDownloaded} bytes.");
                     break;
                 case DownloadStatus.Completed:
-                    Console.WriteLine(progress.Status + " " + progress.BytesDownloaded);
+                    Logging($"{progress.Status} {progress.BytesDownloaded} bytes.");
                     break;
                 case DownloadStatus.Failed:
-                    Console.WriteLine(progress.Status + "\n" + progress.Exception.ToString());
+                    Logging($"{progress.Status}{Environment.NewLine}{progress.Exception}");
                     break;
                 default:
                     break;
+            }
+        }
+
+        static void Logging(string message)
+        {
+            using (StreamWriter writer = new StreamWriter(LoggingFileName, true))
+            {
+                writer.WriteLine($"{DateTime.Now} {message}");
             }
         }
     }
