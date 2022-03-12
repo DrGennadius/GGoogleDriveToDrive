@@ -67,7 +67,7 @@ namespace GGoogleDriveToDrive
             // Define parameters of request.
             FilesResource.ListRequest listRequest = FilesProvider.List();
             listRequest.PageSize = 100;
-            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, mimeType, size, parents)";
+            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, parents)";
 
             FileList fileList = listRequest.Execute();
             IList<Google.Apis.Drive.v3.Data.File> files = fileList.Files;
@@ -94,8 +94,7 @@ namespace GGoogleDriveToDrive
                 return;
             }
 
-            string filePath = "";
-            string fileName = "";
+            string fileName;
             if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
             {
                 var typeConfig = MimeTypesConvertMap[gFile.MimeType];
@@ -109,6 +108,8 @@ namespace GGoogleDriveToDrive
 
             string parentId = gFile.Parents?.FirstOrDefault();
             var parent = !string.IsNullOrEmpty(parentId) ? GetParent(parentId) : null;
+
+            string filePath;
             if (parent != null)
             {
                 string folderPath = PrepareFolder(parent);
@@ -120,20 +121,52 @@ namespace GGoogleDriveToDrive
             }
 
             DownloadingFile = gFile;
-            using FileStream file = new(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
 
+            using FileStream file = new(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write);
             if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
             {
-                var typeConfig = MimeTypesConvertMap[gFile.MimeType];
-                var request = FilesProvider.Export(gFile.Id, typeConfig.MimeType);
-                request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
-                request.Download(file);
+                ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
             }
             else
             {
-                var request = FilesProvider.Get(gFile.Id);
-                request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
-                request.Download(file);
+                ExecuteDownload(file, gFile);
+            }
+        }
+
+        static void ExecuteExport(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
+        {
+            var request = FilesProvider.Export(gFile.Id, mimeType);
+            request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
+            var downloadProgress = request.DownloadWithStatus(fileStream);
+            CorrectFileOnFS(fileStream, gFile, downloadProgress.Status);
+        }
+
+        static void ExecuteDownload(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile)
+        {
+            var request = FilesProvider.Get(gFile.Id);
+            request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
+            var downloadProgress = request.DownloadWithStatus(fileStream);
+            CorrectFileOnFS(fileStream, gFile, downloadProgress.Status);
+        }
+
+        static void CorrectFileOnFS(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, DownloadStatus downloadStatus)
+        {
+            fileStream.Close();
+            if (downloadStatus == DownloadStatus.Failed)
+            {
+                System.IO.File.Delete(fileStream.Name);
+            }
+            else
+            {
+                FileInfo fileInfo = new(fileStream.Name);
+                if (gFile.CreatedTime.HasValue)
+                {
+                    fileInfo.CreationTime = gFile.CreatedTime.Value;
+                }
+                if (gFile.ModifiedTime.HasValue)
+                {
+                    fileInfo.LastWriteTime = gFile.ModifiedTime.Value;
+                }
             }
         }
 
@@ -147,7 +180,15 @@ namespace GGoogleDriveToDrive
             string path = Path.Combine(DownloadsFolder, GetGoogleAbsPath(gFile));
             if (!Directory.Exists(path))
             {
-                Directory.CreateDirectory(path);
+                var directoryInfo = Directory.CreateDirectory(path);
+                if (gFile.CreatedTime.HasValue)
+                {
+                    directoryInfo.CreationTime = gFile.CreatedTime.Value;
+                }
+                if (gFile.ModifiedTime.HasValue)
+                {
+                    directoryInfo.LastWriteTime = gFile.ModifiedTime.Value;
+                }
             }
             return path;
         }
@@ -190,7 +231,7 @@ namespace GGoogleDriveToDrive
 
             // Fetch file from drive
             var request = FilesProvider.Get(id);
-            request.Fields = "id,name,parents";
+            request.Fields = "id, name, createdTime, modifiedTime, parents";
             var parent = request.Execute();
 
             // Save in cache
