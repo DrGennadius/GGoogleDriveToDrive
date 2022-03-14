@@ -222,7 +222,7 @@ namespace GGoogleDriveToDrive
                         GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
                         if (googleFileInfo != null
                             && googleFileInfo.ModifiedTime.HasValue
-                            && googleFileInfo.ModifiedTime.Value.ToShortDateString() == gFile.ModifiedTime.Value.Date.ToShortDateString())
+                            && googleFileInfo.ModifiedTime.Value.ToString() == gFile.ModifiedTime.Value.Date.ToString())
                         {
                             return;
                         }
