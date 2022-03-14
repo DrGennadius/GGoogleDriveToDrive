@@ -28,6 +28,12 @@ namespace GGoogleDriveToDrive
 
         static Dictionary<string, ExportTypeConfig> MimeTypesConvertMap;
 
+#if NET45
+        const int MAX_PATH = 260;
+        const int MAX_DIRECTORY_PATH = 248;
+        const string DownloadsFolderForLongName = "WithLongNames";
+#endif
+
         static void Main(string[] args)
         {
             Init();
@@ -77,6 +83,13 @@ namespace GGoogleDriveToDrive
                 Directory.Delete(DownloadsFolder, true);
             }
             Directory.CreateDirectory(DownloadsFolder);
+#if NET45
+            if (Directory.Exists(DownloadsFolderForLongName))
+            {
+                Directory.Delete(DownloadsFolderForLongName, true);
+            }
+            Directory.CreateDirectory(DownloadsFolderForLongName);
+#endif
         }
 
         static void Processing()
@@ -160,20 +173,37 @@ namespace GGoogleDriveToDrive
             {
                 filePath = Path.Combine(DownloadsFolder, fileName);
             }
+#if NET45
+            // TODO: Solve this for long name limited.
+            filePath = Path.Combine(Environment.CurrentDirectory, filePath);
+            if (filePath.Length >= MAX_PATH)
+            {
+                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileName);
+            }
+            if (filePath.Length >= MAX_PATH)
+            {
+                int fullLength = filePath.Length;
+                string fileExtention = Path.GetExtension(filePath);
+                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(filePath);
+                int prefixPathLenth = fullLength - fileNameWithoutExt.Length - fileExtention.Length;
+                fileNameWithoutExt = fileNameWithoutExt.Substring(0, MAX_PATH - prefixPathLenth - fileExtention.Length);
+                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileNameWithoutExt + fileExtention);
+            }
+#endif
 
             DownloadingFile = gFile;
 
-            using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
-            {
-                if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
-                {
-                    ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
-                }
-                else
-                {
-                    ExecuteDownload(file, gFile);
-                }
-            } 
+            //using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            //{
+            //    if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
+            //    {
+            //        ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+            //    }
+            //    else
+            //    {
+            //        ExecuteDownload(file, gFile);
+            //    }
+            //}
         }
 
         static void ExecuteExport(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
@@ -221,6 +251,21 @@ namespace GGoogleDriveToDrive
                 FilesCache.Add(gFile.Id, gFile);
             }
             string path = Path.Combine(DownloadsFolder, GetGoogleAbsPath(gFile));
+#if NET45
+            // TODO: Solve this for long name limited.
+            path = Path.Combine(Environment.CurrentDirectory, path);
+            if (path.Length >= MAX_DIRECTORY_PATH)
+            {
+                path = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, MakeValidFileName(gFile.Name));
+            }
+            if (path.Length >= MAX_DIRECTORY_PATH)
+            {
+                string folderName = MakeValidFileName(gFile.Name);
+                int prefixPathLength = path.Length - folderName.Length;
+                folderName = folderName.Substring(0, MAX_DIRECTORY_PATH - prefixPathLength);
+                path = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, folderName);
+            }
+#endif
             if (!Directory.Exists(path))
             {
                 var directoryInfo = Directory.CreateDirectory(path);
