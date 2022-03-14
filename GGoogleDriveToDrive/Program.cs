@@ -313,17 +313,17 @@ namespace GGoogleDriveToDrive
             gFileStack.Push(gFile);
             FillStackByParents(gFile, gFileStack);
 
-            string resultFullPath = "";
-
-#if NET45
-            // TODO: Solve this for long name limited.
             // 1. Create full path for limit check.
+            string resultFullPath = "";
             foreach (var item in gFileStack)
             {
                 resultFullPath = Path.Combine(resultFullPath, MakeValidFileName(item.Name));
             }
             resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, resultFullPath);
-            // 2. Limit check.
+
+#if NET45
+            // TODO: Solve this for long name limited.
+            // Limit check.
             bool isTruncated = false;
             if (resultFullPath.Length >= MAX_DIRECTORY_PATH)
             {
