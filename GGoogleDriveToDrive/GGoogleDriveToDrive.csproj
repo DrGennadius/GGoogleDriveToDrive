@@ -13,9 +13,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="client_secrets.json">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
     <None Update="MimeTypesConvertMap.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

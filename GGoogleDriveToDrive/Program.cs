@@ -20,6 +20,8 @@ namespace GGoogleDriveToDrive
         const string DownloadsFolder = "Downloads";
         const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
         const string LoggingFileName = "logging.txt";
+        private const string ClientId = "463415722618-97eb83nbndd7lpdmr5jo7nesd0qnb6na.apps.googleusercontent.com";
+        private const string ClientSecret = "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";
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
         static DriveService Service;
         static FilesResource FilesProvider;
@@ -46,13 +48,23 @@ namespace GGoogleDriveToDrive
         static void GoogleDriveApiInit()
         {
             UserCredential credential;
+            ClientSecrets clientSecrets;
 
             string credPath = "Auth.Store";
-            credential = GoogleWebAuthorizationBroker.AuthorizeAsync(GoogleClientSecrets.FromFile("client_secrets.json").Secrets,
+
+            clientSecrets = System.IO.File.Exists("client_secrets.json")
+                ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
+                : new ClientSecrets
+                {
+                    ClientId = ClientId,
+                    ClientSecret = ClientSecret
+                };
+            credential = GoogleWebAuthorizationBroker.AuthorizeAsync(clientSecrets,
                                                                      Scopes,
                                                                      "user",
                                                                      CancellationToken.None,
                                                                      new FileDataStore(credPath, true)).Result;
+
             Console.WriteLine("Credential file saved to: " + credPath);
 
             // Create Drive API service.
