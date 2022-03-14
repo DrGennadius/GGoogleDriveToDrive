@@ -3,19 +3,30 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net45;net5.0</TargetFrameworks>
-    <Version>0.4.1</Version>
+    <Version>0.5.0</Version>
     <Authors>Gennadius (Gennady Zykov)</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>
-
+    
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net45' ">
+    <ContentSQLiteInteropFiles>true</ContentSQLiteInteropFiles>
+  </PropertyGroup>
+    
   <ItemGroup>
     <PackageReference Include="Google.Apis.Drive.v3" Version="1.56.0.2601" />
+    <PackageReference Include="System.Data.SQLite" Version="1.0.115.5" />
   </ItemGroup>
 
-    <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
-        <PackageReference Include="AlphaFS" Version="2.2.6" />
-    </ItemGroup>
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
+    <PackageReference Include="AlphaFS" Version="2.2.6" />
+    <PackageReference Include="FluentNHibernate" Version="2.0.3" />
+    <PackageReference Include="System.ValueTuple" Version="4.5.0" />
+  </ItemGroup>
 
+  <ItemGroup Condition=" '$(TargetFramework)' == 'net5.0' ">
+    <PackageReference Include="FluentNHibernate" Version="3.1.0" />
+  </ItemGroup>
+    
   <ItemGroup>
     <None Update="MimeTypesConvertMap.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
