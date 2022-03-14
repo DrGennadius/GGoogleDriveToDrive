@@ -12,6 +12,10 @@
     <PackageReference Include="Google.Apis.Drive.v3" Version="1.56.0.2601" />
   </ItemGroup>
 
+    <ItemGroup Condition=" '$(TargetFramework)' == 'net45' ">
+        <PackageReference Include="AlphaFS" Version="2.2.6" />
+    </ItemGroup>
+
   <ItemGroup>
     <None Update="MimeTypesConvertMap.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

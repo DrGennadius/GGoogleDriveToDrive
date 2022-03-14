@@ -7,10 +7,15 @@ using Google.Apis.Util.Store;
 using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading;
+
+#if NET45
+using Alphaleonis.Win32.Filesystem;
+#else
+using System.IO;
+#endif
 
 namespace GGoogleDriveToDrive
 {
@@ -59,12 +64,6 @@ namespace GGoogleDriveToDrive
 
         static Dictionary<string, ExportTypeConfig> MimeTypesConvertMap;
 
-#if NET45
-        const int MAX_PATH = 260;
-        const int MAX_DIRECTORY_PATH = 248;
-        const string DownloadsFolderForLongName = "WithLongNames";
-#endif
-
         static void Main(string[] args)
         {
             GoogleDriveApiInit();
@@ -75,7 +74,7 @@ namespace GGoogleDriveToDrive
 
         static void GoogleDriveApiInit()
         {
-            bool isEmptyAuth = System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
+            bool isEmptyAuth = !System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
             Init(isEmptyAuth);
             UserCredential credential;
             ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
@@ -107,7 +106,7 @@ namespace GGoogleDriveToDrive
         {
             Logging("Start command.");
 
-            using (StreamReader file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
+            using (var file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
             {
                 JsonSerializer serializer = new JsonSerializer();
                 MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
@@ -120,16 +119,6 @@ namespace GGoogleDriveToDrive
             {
                 Directory.CreateDirectory(DownloadsFolder);
             }
-#if NET45
-            if (isRemoveDirectories && Directory.Exists(DownloadsFolderForLongName))
-            {
-                Directory.Delete(DownloadsFolderForLongName, true);
-            }
-            if (!Directory.Exists(DownloadsFolderForLongName))
-            {
-                Directory.CreateDirectory(DownloadsFolderForLongName);
-            }
-#endif
         }
 
         static void Processing()
@@ -218,22 +207,6 @@ namespace GGoogleDriveToDrive
             {
                 filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, fileName);
             }
-#if NET45
-            // TODO: Solve this for long name limited.
-            if (filePath.Length >= MAX_PATH)
-            {
-                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileName);
-            }
-            if (filePath.Length >= MAX_PATH)
-            {
-                int fullLength = filePath.Length;
-                string fileExtention = Path.GetExtension(filePath);
-                string fileNameWithoutExt = Path.GetFileNameWithoutExtension(filePath);
-                int prefixPathLenth = fullLength - fileNameWithoutExt.Length - fileExtention.Length;
-                fileNameWithoutExt = fileNameWithoutExt.Substring(0, MAX_PATH - prefixPathLenth - fileExtention.Length);
-                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileNameWithoutExt + fileExtention);
-            }
-#endif
 
             DownloadingFile = gFile;
 
@@ -242,9 +215,13 @@ namespace GGoogleDriveToDrive
                 // Only if we know what type we are converting to
                 if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
                 {
+#if NET45
+                    using (var file = Alphaleonis.Win32.Filesystem.File.Create(filePath))
+#else
                     using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+#endif
                     {
-                        ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+                        ExecuteExport(file, filePath, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
                     }
                 }
             }
@@ -257,39 +234,43 @@ namespace GGoogleDriveToDrive
                 {
                     return;
                 }
-                using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+#if NET45
+                using (var file = Alphaleonis.Win32.Filesystem.File.Create(filePath))
+#else
+                using (var file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+#endif
                 {
-                    ExecuteDownload(file, gFile);
+                    ExecuteDownload(file, filePath, gFile);
                 }
             }
         }
 
-        static void ExecuteExport(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
+        static void ExecuteExport(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
         {
             var request = FilesProvider.Export(gFile.Id, mimeType);
             request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
             var downloadProgress = request.DownloadWithStatus(fileStream);
-            CorrectFileOnFS(fileStream, gFile, downloadProgress.Status);
+            CorrectFileOnFS(fileStream, filePath, gFile, downloadProgress.Status);
         }
 
-        static void ExecuteDownload(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile)
+        static void ExecuteDownload(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile)
         {
             var request = FilesProvider.Get(gFile.Id);
             request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
             var downloadProgress = request.DownloadWithStatus(fileStream);
-            CorrectFileOnFS(fileStream, gFile, downloadProgress.Status);
+            CorrectFileOnFS(fileStream, filePath, gFile, downloadProgress.Status);
         }
 
-        static void CorrectFileOnFS(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, DownloadStatus downloadStatus)
+        static void CorrectFileOnFS(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile, DownloadStatus downloadStatus)
         {
             fileStream.Close();
             if (downloadStatus == DownloadStatus.Failed)
             {
-                System.IO.File.Delete(fileStream.Name);
+                System.IO.File.Delete(filePath);
             }
             else
             {
-                FileInfo fileInfo = new FileInfo(fileStream.Name);
+                FileInfo fileInfo = new FileInfo(filePath);
                 if (gFile.CreatedTime.HasValue)
                 {
                     fileInfo.CreationTime = gFile.CreatedTime.Value;
@@ -321,29 +302,6 @@ namespace GGoogleDriveToDrive
             }
             resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, resultFullPath);
 
-#if NET45
-            // TODO: Solve this for long name limited.
-            // Limit check.
-            bool isTruncated = false;
-            if (resultFullPath.Length >= MAX_DIRECTORY_PATH)
-            {
-                resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, MakeValidFileName(gFile.Name));
-                isTruncated = true;
-            }
-            if (resultFullPath.Length >= MAX_DIRECTORY_PATH)
-            {
-                string folderName = MakeValidFileName(gFile.Name);
-                int prefixPathLength = resultFullPath.Length - folderName.Length;
-                folderName = folderName.Substring(0, MAX_DIRECTORY_PATH - prefixPathLength);
-                resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, folderName);
-            }
-            if (isTruncated)
-            {
-                CreateDirectory(gFile, resultFullPath);
-                return resultFullPath;
-            }
-#endif
-
             CreateDirectories(gFile, gFileStack);
             return resultFullPath;
         }
@@ -362,7 +320,11 @@ namespace GGoogleDriveToDrive
         {
             if (!Directory.Exists(resultFullPath))
             {
+#if NET45
+                var directoryInfo = Alphaleonis.Win32.Filesystem.Directory.CreateDirectory(resultFullPath);
+#else
                 var directoryInfo = Directory.CreateDirectory(resultFullPath);
+#endif
                 if (gFile.CreatedTime.HasValue)
                 {
                     directoryInfo.CreationTime = gFile.CreatedTime.Value;
@@ -451,7 +413,7 @@ namespace GGoogleDriveToDrive
 
         static void Logging(string message)
         {
-            using (StreamWriter writer = new StreamWriter(LoggingFileName, true))
+            using (System.IO.StreamWriter writer = new System.IO.StreamWriter(LoggingFileName, true))
             {
                 writer.WriteLine($"{DateTime.Now} {message}");
             }
