@@ -16,13 +16,41 @@ namespace GGoogleDriveToDrive
 {
     class Program
     {
+        /// <summary>
+        /// Google Workspace and Drive MIME Types.<br/>
+        /// https://developers.google.com/drive/api/v3/mime-types?hl=en
+        /// </summary>
+        static readonly string[] GoogleMimeTypes = new string[]
+        {
+            "application/vnd.google-apps.audio",
+            "application/vnd.google-apps.document",
+            "application/vnd.google-apps.drive-sdk",
+            "application/vnd.google-apps.drawing",
+            "application/vnd.google-apps.file",
+            "application/vnd.google-apps.folder",
+            "application/vnd.google-apps.form",
+            "application/vnd.google-apps.fusiontable",
+            "application/vnd.google-apps.jam",
+            "application/vnd.google-apps.map",
+            "application/vnd.google-apps.photo",
+            "application/vnd.google-apps.presentation",
+            "application/vnd.google-apps.script",
+            "application/vnd.google-apps.shortcut",
+            "application/vnd.google-apps.site",
+            "application/vnd.google-apps.spreadsheet",
+            "application/vnd.google-apps.unknown",
+            "application/vnd.google-apps.video"
+        };
+
+        private const string ClientId = "463415722618-97eb83nbndd7lpdmr5jo7nesd0qnb6na.apps.googleusercontent.com";
+        private const string ClientSecret = "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";
+
         const string ApplicationName = "GGoogleDriveToDrive";
         const string DownloadsFolder = "Downloads";
         const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
         const string LoggingFileName = "logging.txt";
         const string CredentialPath = "Auth.Store";
-        private const string ClientId = "463415722618-97eb83nbndd7lpdmr5jo7nesd0qnb6na.apps.googleusercontent.com";
-        private const string ClientSecret = "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";
+        
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
         static DriveService Service;
         static FilesResource FilesProvider;
@@ -39,7 +67,6 @@ namespace GGoogleDriveToDrive
 
         static void Main(string[] args)
         {
-            Init();
             GoogleDriveApiInit();
             Console.WriteLine();
             Processing();
@@ -48,6 +75,8 @@ namespace GGoogleDriveToDrive
 
         static void GoogleDriveApiInit()
         {
+            bool isEmptyAuth = System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
+            Init(isEmptyAuth);
             UserCredential credential;
             ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
                 ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
@@ -74,7 +103,7 @@ namespace GGoogleDriveToDrive
             FilesProvider = Service.Files;
         }
 
-        static void Init()
+        static void Init(bool isRemoveDirectories = false)
         {
             Logging("Start command.");
 
@@ -83,11 +112,19 @@ namespace GGoogleDriveToDrive
                 JsonSerializer serializer = new JsonSerializer();
                 MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
             }
+            if (isRemoveDirectories && Directory.Exists(DownloadsFolder))
+            {
+                Directory.Delete(DownloadsFolder, true);
+            }
             if (!Directory.Exists(DownloadsFolder))
             {
                 Directory.CreateDirectory(DownloadsFolder);
             }
 #if NET45
+            if (isRemoveDirectories && Directory.Exists(DownloadsFolderForLongName))
+            {
+                Directory.Delete(DownloadsFolderForLongName, true);
+            }
             if (!Directory.Exists(DownloadsFolderForLongName))
             {
                 Directory.CreateDirectory(DownloadsFolderForLongName);
@@ -106,20 +143,20 @@ namespace GGoogleDriveToDrive
             int itemsCount = 0;
 
             FileList fileList = listRequest.Execute();
-            IList<Google.Apis.Drive.v3.Data.File> files = fileList.Files;
+            IList<Google.Apis.Drive.v3.Data.File> gFiles = fileList.Files;
             Console.WriteLine("Processing...");
             Logging("Processing...");
             int startPartLineCursor = Console.CursorTop;
-            while (files != null && files.Count > 0)
+            while (gFiles != null && gFiles.Count > 0)
             {
-                foreach (var file in files)
+                foreach (var gFile in gFiles)
                 {
                     ClearLines(startPartLineCursor);
                     Console.SetCursorPosition(0, startPartLineCursor);
-                    string itemLine = $"[{++itemsCount}] \"{file.Name}\" (Id: \"{file.Id}\" {file.Size} bytes {file.MimeType})";
+                    string itemLine = $"[{++itemsCount}] \"{gFile.Name}\" (Id: \"{gFile.Id}\" {gFile.Size} bytes {gFile.MimeType})";
                     Console.WriteLine(itemLine);
                     Logging(itemLine);
-                    PullContentToDrive(file);
+                    PullContentToDrive(gFile);
                 }
 
                 listRequest.PageToken = fileList.NextPageToken;
@@ -128,7 +165,7 @@ namespace GGoogleDriveToDrive
                     break;
                 }
                 fileList = listRequest.Execute();
-                files = fileList.Files;
+                gFiles = fileList.Files;
             }
 
             ClearLines(startLineCursor);
@@ -162,7 +199,8 @@ namespace GGoogleDriveToDrive
                 return;
             }
 
-            string fileName = MimeTypesConvertMap.ContainsKey(gFile.MimeType)
+            bool isGoogleType = GoogleMimeTypes.Contains(gFile.MimeType);
+            string fileName = isGoogleType && MimeTypesConvertMap.ContainsKey(gFile.MimeType)
                 ? gFile.Name + '.' + MimeTypesConvertMap[gFile.MimeType].FileExtension
                 : gFile.Name;
             fileName = MakeValidFileName(fileName);
@@ -174,15 +212,14 @@ namespace GGoogleDriveToDrive
             if (parent != null)
             {
                 string folderPath = PrepareFolder(parent);
-                filePath = Path.Combine(folderPath, fileName);
+                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, folderPath, fileName);
             }
             else
             {
-                filePath = Path.Combine(DownloadsFolder, fileName);
+                filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, fileName);
             }
 #if NET45
             // TODO: Solve this for long name limited.
-            filePath = Path.Combine(Environment.CurrentDirectory, filePath);
             if (filePath.Length >= MAX_PATH)
             {
                 filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileName);
@@ -198,22 +235,29 @@ namespace GGoogleDriveToDrive
             }
 #endif
 
-            if (!string.IsNullOrWhiteSpace(gFile.Md5Checksum)
-                && System.IO.File.Exists(filePath)
-                && gFile.Md5Checksum.Equals(GetMD5Checksum(filePath)))
-            {
-                return;
-            }
-
             DownloadingFile = gFile;
 
-            using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            if (isGoogleType)
             {
+                // Only if we know what type we are converting to
                 if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
                 {
-                    ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+                    using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+                    {
+                        ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+                    }
                 }
-                else
+            }
+            else
+            {
+                // Check Md5Checksum first
+                if (!string.IsNullOrWhiteSpace(gFile.Md5Checksum)
+                    && System.IO.File.Exists(filePath)
+                    && gFile.Md5Checksum.Equals(GetMD5Checksum(filePath)))
+                {
+                    return;
+                }
+                using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
                 {
                     ExecuteDownload(file, gFile);
                 }
@@ -264,63 +308,86 @@ namespace GGoogleDriveToDrive
             {
                 FilesCache.Add(gFile.Id, gFile);
             }
-            string path = Path.Combine(DownloadsFolder, GetGoogleAbsPath(gFile));
+
+            Stack<Google.Apis.Drive.v3.Data.File> gFileStack = new Stack<Google.Apis.Drive.v3.Data.File>();
+            gFileStack.Push(gFile);
+            FillStackByParents(gFile, gFileStack);
+
+            string resultFullPath = "";
+
 #if NET45
             // TODO: Solve this for long name limited.
-            path = Path.Combine(Environment.CurrentDirectory, path);
-            if (path.Length >= MAX_DIRECTORY_PATH)
+            // 1. Create full path for limit check.
+            foreach (var item in gFileStack)
             {
-                path = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, MakeValidFileName(gFile.Name));
+                resultFullPath = Path.Combine(resultFullPath, MakeValidFileName(item.Name));
             }
-            if (path.Length >= MAX_DIRECTORY_PATH)
+            resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder, resultFullPath);
+            // 2. Limit check.
+            bool isTruncated = false;
+            if (resultFullPath.Length >= MAX_DIRECTORY_PATH)
+            {
+                resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, MakeValidFileName(gFile.Name));
+                isTruncated = true;
+            }
+            if (resultFullPath.Length >= MAX_DIRECTORY_PATH)
             {
                 string folderName = MakeValidFileName(gFile.Name);
-                int prefixPathLength = path.Length - folderName.Length;
+                int prefixPathLength = resultFullPath.Length - folderName.Length;
                 folderName = folderName.Substring(0, MAX_DIRECTORY_PATH - prefixPathLength);
-                path = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, folderName);
+                resultFullPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, folderName);
+            }
+            if (isTruncated)
+            {
+                CreateDirectory(gFile, resultFullPath);
+                return resultFullPath;
             }
 #endif
-            if (!Directory.Exists(path))
+
+            CreateDirectories(gFile, gFileStack);
+            return resultFullPath;
+        }
+
+        static void CreateDirectories(Google.Apis.Drive.v3.Data.File gFile, Stack<Google.Apis.Drive.v3.Data.File> gFileStack)
+        {
+            string subPath = Path.Combine(Environment.CurrentDirectory, DownloadsFolder);
+            foreach (var item in gFileStack)
             {
-                var directoryInfo = Directory.CreateDirectory(path);
+                subPath = Path.Combine(subPath, MakeValidFileName(item.Name));
+                CreateDirectory(gFile, subPath);
+            }
+        }
+
+        static void CreateDirectory(Google.Apis.Drive.v3.Data.File gFile, string resultFullPath)
+        {
+            if (!Directory.Exists(resultFullPath))
+            {
+                var directoryInfo = Directory.CreateDirectory(resultFullPath);
                 if (gFile.CreatedTime.HasValue)
                 {
                     directoryInfo.CreationTime = gFile.CreatedTime.Value;
                 }
-                if (gFile.ModifiedTime.HasValue)
-                {
-                    directoryInfo.LastWriteTime = gFile.ModifiedTime.Value;
-                }
             }
-            return path;
         }
 
-        static string GetGoogleAbsPath(Google.Apis.Drive.v3.Data.File file)
+        static void FillStackByParents(Google.Apis.Drive.v3.Data.File gFile, Stack<Google.Apis.Drive.v3.Data.File> gFileStack)
         {
-            var name = MakeValidFileName(file.Name);
-
-            if (file.Parents == null || file.Parents.Count == 0)
+            if (gFile.Parents != null && gFile.Parents.Count >= 0)
             {
-                return name;
-            }
-
-            Stack<string> pathQueue = new Stack<string>();
-            pathQueue.Push(name);
-
-            while (true)
-            {
-                var parent = GetParent(file.Parents[0]);
-
-                // Stop when we find the root dir
-                if (parent.Parents == null || parent.Parents.Count == 0)
+                var parent = gFile;
+                while (true)
                 {
-                    break;
-                }
+                    parent = GetParent(parent.Parents[0]);
 
-                pathQueue.Push(MakeValidFileName(parent.Name));
-                file = parent;
+                    // Stop when we find the root dir
+                    if (parent.Parents == null || parent.Parents.Count == 0)
+                    {
+                        break;
+                    }
+
+                    gFileStack.Push(parent);
+                }
             }
-            return pathQueue.Aggregate((current, next) => Path.Combine(current, next));
         }
 
         static Google.Apis.Drive.v3.Data.File GetParent(string id)
@@ -337,7 +404,7 @@ namespace GGoogleDriveToDrive
             var parent = request.Execute();
 
             // Save in cache
-            FilesCache[id] = parent;
+            FilesCache.Add(id, parent);
 
             return parent;
         }
