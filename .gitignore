@@ -362,5 +362,5 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-# Credentials for Google API
-credentials.json
+# Client secrets for Google API
+/GGoogleDriveToDrive/client_secrets.json

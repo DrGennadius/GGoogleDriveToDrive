@@ -47,17 +47,13 @@ namespace GGoogleDriveToDrive
         {
             UserCredential credential;
 
-            using (var stream = new FileStream("credentials.json", FileMode.Open, FileAccess.Read))
-            {
-                string credPath = "Auth.Store";
-                credential = GoogleWebAuthorizationBroker.AuthorizeAsync(
-                    GoogleClientSecrets.FromStream(stream).Secrets,
-                    Scopes,
-                    "user",
-                    CancellationToken.None,
-                    new FileDataStore(credPath, true)).Result;
-                Console.WriteLine("Credential file saved to: " + credPath);
-            }
+            string credPath = "Auth.Store";
+            credential = GoogleWebAuthorizationBroker.AuthorizeAsync(GoogleClientSecrets.FromFile("client_secrets.json").Secrets,
+                                                                     Scopes,
+                                                                     "user",
+                                                                     CancellationToken.None,
+                                                                     new FileDataStore(credPath, true)).Result;
+            Console.WriteLine("Credential file saved to: " + credPath);
 
             // Create Drive API service.
             Service = new DriveService(new BaseClientService.Initializer()
@@ -193,17 +189,17 @@ namespace GGoogleDriveToDrive
 
             DownloadingFile = gFile;
 
-            //using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
-            //{
-            //    if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
-            //    {
-            //        ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
-            //    }
-            //    else
-            //    {
-            //        ExecuteDownload(file, gFile);
-            //    }
-            //}
+            using (FileStream file = new FileStream(filePath, System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            {
+                if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
+                {
+                    ExecuteExport(file, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
+                }
+                else
+                {
+                    ExecuteDownload(file, gFile);
+                }
+            }
         }
 
         static void ExecuteExport(FileStream fileStream, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
