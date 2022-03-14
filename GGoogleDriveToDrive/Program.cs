@@ -20,6 +20,7 @@ namespace GGoogleDriveToDrive
         const string DownloadsFolder = "Downloads";
         const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
         const string LoggingFileName = "logging.txt";
+        const string CredentialPath = "Auth.Store";
         private const string ClientId = "463415722618-97eb83nbndd7lpdmr5jo7nesd0qnb6na.apps.googleusercontent.com";
         private const string ClientSecret = "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";
         static readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
@@ -48,11 +49,7 @@ namespace GGoogleDriveToDrive
         static void GoogleDriveApiInit()
         {
             UserCredential credential;
-            ClientSecrets clientSecrets;
-
-            string credPath = "Auth.Store";
-
-            clientSecrets = System.IO.File.Exists("client_secrets.json")
+            ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
                 ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
                 : new ClientSecrets
                 {
@@ -63,9 +60,9 @@ namespace GGoogleDriveToDrive
                                                                      Scopes,
                                                                      "user",
                                                                      CancellationToken.None,
-                                                                     new FileDataStore(credPath, true)).Result;
+                                                                     new FileDataStore(CredentialPath, true)).Result;
 
-            Console.WriteLine("Credential file saved to: " + credPath);
+            Console.WriteLine("Credential file saved to: " + CredentialPath);
 
             // Create Drive API service.
             Service = new DriveService(new BaseClientService.Initializer()
@@ -86,17 +83,15 @@ namespace GGoogleDriveToDrive
                 JsonSerializer serializer = new JsonSerializer();
                 MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
             }
-            if (Directory.Exists(DownloadsFolder))
+            if (!Directory.Exists(DownloadsFolder))
             {
-                Directory.Delete(DownloadsFolder, true);
+                Directory.CreateDirectory(DownloadsFolder);
             }
-            Directory.CreateDirectory(DownloadsFolder);
 #if NET45
-            if (Directory.Exists(DownloadsFolderForLongName))
+            if (!Directory.Exists(DownloadsFolderForLongName))
             {
-                Directory.Delete(DownloadsFolderForLongName, true);
+                Directory.CreateDirectory(DownloadsFolderForLongName);
             }
-            Directory.CreateDirectory(DownloadsFolderForLongName);
 #endif
         }
 
@@ -105,7 +100,7 @@ namespace GGoogleDriveToDrive
             // Define parameters of request.
             FilesResource.ListRequest listRequest = FilesProvider.List();
             listRequest.PageSize = 100;
-            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, parents)";
+            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, md5Checksum, parents)";
 
             int startLineCursor = Console.CursorTop;
             int itemsCount = 0;
@@ -128,6 +123,10 @@ namespace GGoogleDriveToDrive
                 }
 
                 listRequest.PageToken = fileList.NextPageToken;
+                if (listRequest.PageToken == null)
+                {
+                    break;
+                }
                 fileList = listRequest.Execute();
                 files = fileList.Files;
             }
@@ -198,6 +197,13 @@ namespace GGoogleDriveToDrive
                 filePath = Path.Combine(Environment.CurrentDirectory, DownloadsFolderForLongName, fileNameWithoutExt + fileExtention);
             }
 #endif
+
+            if (!string.IsNullOrWhiteSpace(gFile.Md5Checksum)
+                && System.IO.File.Exists(filePath)
+                && gFile.Md5Checksum.Equals(GetMD5Checksum(filePath)))
+            {
+                return;
+            }
 
             DownloadingFile = gFile;
 
@@ -342,6 +348,18 @@ namespace GGoogleDriveToDrive
             string invalidRegStr = string.Format(@"([{0}]*\.+$)|([{0}]+)", invalidChars);
 
             return Regex.Replace(name, invalidRegStr, "_");
+        }
+
+        static string GetMD5Checksum(string fileName)
+        {
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                using (var stream = System.IO.File.OpenRead(fileName))
+                {
+                    var hash = md5.ComputeHash(stream);
+                    return BitConverter.ToString(hash).Replace("-", "").ToLower();
+                }
+            }
         }
 
         static void Download_ProgressChanged(IDownloadProgress progress)
