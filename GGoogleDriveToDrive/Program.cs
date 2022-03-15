@@ -130,7 +130,7 @@ namespace GGoogleDriveToDrive
             // Define parameters of request.
             FilesResource.ListRequest listRequest = FilesProvider.List();
             listRequest.PageSize = 100;
-            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, md5Checksum, parents)";
+            listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, md5Checksum, capabilities, parents)";
 
             int startLineCursor = Console.CursorTop;
             int itemsCount = 0;
@@ -187,11 +187,53 @@ namespace GGoogleDriveToDrive
         {
             if (gFile.MimeType == "application/vnd.google-apps.folder")
             {
+                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
+                if (googleFileInfo != null
+                    && Directory.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
+                {
+                    return;
+                }
                 PrepareFolder(gFile);
                 return;
             }
 
             bool isGoogleType = GoogleMimeTypes.Contains(gFile.MimeType);
+            if (isGoogleType && gFile.ModifiedTime.HasValue)
+            {
+                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
+                if (googleFileInfo != null
+                    && googleFileInfo.ModifiedTime.HasValue
+                    && googleFileInfo.ModifiedTime.Value.ToString() == gFile.ModifiedTime.Value.ToString()
+#if NET45
+                    && Alphaleonis.Win32.Filesystem.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
+#else
+                    && System.IO.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
+#endif
+                {
+                    return;
+                }
+            }
+            else if (!isGoogleType && !string.IsNullOrWhiteSpace(gFile.Md5Checksum))
+            {
+                if (gFile.Capabilities.CanDownload.HasValue && !gFile.Capabilities.CanDownload.Value)
+                {
+                    return;
+                }
+                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
+                if (googleFileInfo != null
+                    && !string.IsNullOrWhiteSpace(googleFileInfo.Md5Checksum)
+                    && !string.IsNullOrWhiteSpace(googleFileInfo.LocalPath)
+                    && gFile.Md5Checksum == googleFileInfo.Md5Checksum
+#if NET45
+                    && Alphaleonis.Win32.Filesystem.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
+#else
+                    && System.IO.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
+#endif
+                {
+                    return;
+                }
+            }
+
             string fileName = isGoogleType && MimeTypesConvertMap.ContainsKey(gFile.MimeType)
                 ? gFile.Name + '.' + MimeTypesConvertMap[gFile.MimeType].FileExtension
                 : gFile.Name;
@@ -217,16 +259,6 @@ namespace GGoogleDriveToDrive
                 // Only if we know what type we are converting to
                 if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
                 {
-                    if (gFile.ModifiedTime.HasValue)
-                    {
-                        GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
-                        if (googleFileInfo != null
-                            && googleFileInfo.ModifiedTime.HasValue
-                            && googleFileInfo.ModifiedTime.Value.ToString() == gFile.ModifiedTime.Value.ToString())
-                        {
-                            return;
-                        }
-                    }
 #if NET45
                     using (var file = Alphaleonis.Win32.Filesystem.File.Create(Path.Combine(DownloadsFolder, filePath)))
 #else
@@ -239,13 +271,6 @@ namespace GGoogleDriveToDrive
             }
             else
             {
-                // Check Md5Checksum first
-                if (!string.IsNullOrWhiteSpace(gFile.Md5Checksum)
-                    && System.IO.File.Exists(Path.Combine(DownloadsFolder, filePath))
-                    && gFile.Md5Checksum == GetMD5Checksum(Path.Combine(DownloadsFolder, filePath)))
-                {
-                    return;
-                }
 #if NET45
                 using (var file = Alphaleonis.Win32.Filesystem.File.Create(Path.Combine(DownloadsFolder, filePath)))
 #else
@@ -425,18 +450,6 @@ namespace GGoogleDriveToDrive
             string invalidRegStr = string.Format(@"([{0}]*\.+$)|([{0}]+)", invalidChars);
 
             return Regex.Replace(name, invalidRegStr, "_");
-        }
-
-        static string GetMD5Checksum(string fileName)
-        {
-            using (var md5 = System.Security.Cryptography.MD5.Create())
-            {
-                using (var stream = System.IO.File.OpenRead(fileName))
-                {
-                    var hash = md5.ComputeHash(stream);
-                    return BitConverter.ToString(hash).Replace("-", "").ToLower();
-                }
-            }
         }
 
         static void Download_ProgressChanged(IDownloadProgress progress)
