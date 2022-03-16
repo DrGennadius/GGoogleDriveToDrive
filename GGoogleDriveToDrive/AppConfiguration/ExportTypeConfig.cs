@@ -1,4 +1,4 @@
-﻿namespace GGoogleDriveToDrive
+﻿namespace GGoogleDriveToDrive.AppConfiguration
 {
     public struct ExportTypeConfig
     {

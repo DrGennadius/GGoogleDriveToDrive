@@ -11,6 +11,7 @@ using GGoogleDriveToDrive.Models;
 using System.Text.RegularExpressions;
 using System.Linq;
 using Google.Apis.Download;
+using GGoogleDriveToDrive.AppConfiguration;
 
 #if NET45
 using Alphaleonis.Win32.Filesystem;
@@ -58,13 +59,21 @@ namespace GGoogleDriveToDrive.Services
         };
 
         public const string ApplicationName = "GGoogleDriveToDrive";
+
         public const string DownloadsFolder = "Downloads";
+
+        [Obsolete("Use new property 'AppConfigurationFileName' for new configuration.")]
         public const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
+
+        public const string AppConfigurationFileName = "app_config.json";
+
         public const string CredentialPath = "Auth.Store";
 
         public readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
 
         public Google.Apis.Drive.v3.Data.File DownloadingFile { get; private set; }
+
+        public AppConfig AppConfiguration { get; private set; }
 
         public Dictionary<string, ExportTypeConfig> MimeTypesConvertMap { get; private set; }
 
@@ -72,30 +81,55 @@ namespace GGoogleDriveToDrive.Services
 
         public void Initialize()
         {
-            bool isEmptyAuth = !System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
-            PreparyDirectories(isEmptyAuth);
-            UserCredential credential;
-            ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
-                ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
-                : new ClientSecrets
-                {
-                    ClientId = ClientId,
-                    ClientSecret = ClientSecret
-                };
-            credential = GoogleWebAuthorizationBroker.AuthorizeAsync(clientSecrets,
-                                                                     Scopes,
-                                                                     "user",
-                                                                     CancellationToken.None,
-                                                                     new FileDataStore(CredentialPath, true)).Result;
-
-            // Create Drive API service.
-            Service = new DriveService(new BaseClientService.Initializer()
+            try
             {
-                HttpClientInitializer = credential,
-                ApplicationName = ApplicationName,
-            });
+                if (System.IO.File.Exists(MimeTypesConvertMapConfigFileName) && !System.IO.File.Exists(AppConfigurationFileName))
+                {
+                    // TODO: Get rid of this branch.
+                    using (var file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
+                    {
+                        JsonSerializer serializer = new JsonSerializer();
+                        MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
+                        AppConfiguration = AppConfig.CreateByMimeTypesConvertMap(MimeTypesConvertMap);
+                        AppConfig.Save(AppConfiguration, AppConfigurationFileName);
+                    }
+                }
+                else
+                {
+                    AppConfiguration = AppConfig.Load(AppConfigurationFileName);
+                    MimeTypesConvertMap = AppConfiguration.MimeTypesConvertMap;
+                }
+                bool isEmptyAuth = !System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
+                PreparyDirectories(isEmptyAuth);
+                UserCredential credential;
+                ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
+                    ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
+                    : new ClientSecrets
+                    {
+                        ClientId = ClientId,
+                        ClientSecret = ClientSecret
+                    };
+                credential = GoogleWebAuthorizationBroker.AuthorizeAsync(clientSecrets,
+                                                                         Scopes,
+                                                                         "user",
+                                                                         CancellationToken.None,
+                                                                         new FileDataStore(CredentialPath, true)).Result;
 
-            FilesProvider = Service.Files;
+                // Create Drive API service.
+                Service = new DriveService(new BaseClientService.Initializer()
+                {
+                    HttpClientInitializer = credential,
+                    ApplicationName = ApplicationName,
+                });
+
+                FilesProvider = Service.Files;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Initialization failed:");
+                Console.WriteLine(ex);
+            }
+            
         }
 
         public PullContentProgress PullContent()
@@ -410,11 +444,6 @@ namespace GGoogleDriveToDrive.Services
 
         private void PreparyDirectories(bool isRemoveDirectories = false)
         {
-            using (var file = System.IO.File.OpenText(MimeTypesConvertMapConfigFileName))
-            {
-                JsonSerializer serializer = new JsonSerializer();
-                MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
-            }
             if (isRemoveDirectories && Directory.Exists(DownloadsFolder))
             {
                 Directory.Delete(DownloadsFolder, true);

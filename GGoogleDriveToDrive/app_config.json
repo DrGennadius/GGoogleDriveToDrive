@@ -1,0 +1,16 @@
+{
+  "MimeTypesConvertMap": {
+    "application/vnd.google-apps.document": {
+      "MimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "FileExtension": "docx"
+    },
+    "application/vnd.google-apps.spreadsheet": {
+      "MimeType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "FileExtension": "xlsx"
+    },
+    "application/vnd.google-apps.presentation": {
+      "MimeType": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "FileExtension": "ppsx"
+    }
+  }
+}
