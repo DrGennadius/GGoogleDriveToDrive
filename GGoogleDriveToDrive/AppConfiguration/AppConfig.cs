@@ -1,4 +1,5 @@
 ﻿using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -9,6 +10,11 @@ namespace GGoogleDriveToDrive.AppConfiguration
     {
         [JsonIgnore]
         public string AppConfigurationFileName { get; private set; }
+
+        public string DownloadsFolder { get; set; }
+
+        [JsonConverter(typeof(StringEnumConverter))]
+        public ContentPullMode ContentPullMode { get; set; } = ContentPullMode.All;
 
         public Dictionary<string, ExportTypeConfig> MimeTypesConvertMap { get; set; }
 
@@ -54,5 +60,23 @@ namespace GGoogleDriveToDrive.AppConfiguration
                 serializer.Serialize(file, appConfiguration);
             }
         }        
+    }
+
+    public enum ContentPullMode
+    {
+        /// <summary>
+        /// All available content.
+        /// </summary>
+        All,
+
+        /// <summary>
+        /// Files that have me as the owner.
+        /// </summary>
+        IAmOwnerOnly,
+
+        /// <summary>
+        /// Files that are only on my drive.
+        /// </summary>
+        MyDriveOnly
     }
 }

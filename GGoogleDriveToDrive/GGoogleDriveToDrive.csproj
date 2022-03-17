@@ -3,7 +3,7 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFrameworks>net45;net5.0</TargetFrameworks>
-    <Version>0.5.2</Version>
+    <Version>0.5.3</Version>
     <Authors>Gennadius (Gennady Zykov)</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
   </PropertyGroup>

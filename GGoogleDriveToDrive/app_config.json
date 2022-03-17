@@ -1,4 +1,6 @@
 {
+  "DownloadsFolder": "Downloads",
+  "ContentPullMode": "All",
   "MimeTypesConvertMap": {
     "application/vnd.google-apps.document": {
       "MimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

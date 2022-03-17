@@ -60,7 +60,7 @@ namespace GGoogleDriveToDrive.Services
 
         public const string ApplicationName = "GGoogleDriveToDrive";
 
-        public const string DownloadsFolder = "Downloads";
+        public string DownloadsFolder { get; set; } = "Downloads";
 
         [Obsolete("Use new property 'AppConfigurationFileName' for new configuration.")]
         public const string MimeTypesConvertMapConfigFileName = "MimeTypesConvertMap.json";
@@ -91,6 +91,7 @@ namespace GGoogleDriveToDrive.Services
                         JsonSerializer serializer = new JsonSerializer();
                         MimeTypesConvertMap = (Dictionary<string, ExportTypeConfig>)serializer.Deserialize(file, typeof(Dictionary<string, ExportTypeConfig>));
                         AppConfiguration = AppConfig.CreateByMimeTypesConvertMap(MimeTypesConvertMap);
+                        AppConfiguration.DownloadsFolder = DownloadsFolder;
                         AppConfig.Save(AppConfiguration, AppConfigurationFileName);
                     }
                 }
@@ -98,6 +99,15 @@ namespace GGoogleDriveToDrive.Services
                 {
                     AppConfiguration = AppConfig.Load(AppConfigurationFileName);
                     MimeTypesConvertMap = AppConfiguration.MimeTypesConvertMap;
+                    if (string.IsNullOrWhiteSpace(AppConfiguration.DownloadsFolder))
+                    {
+                        AppConfiguration.DownloadsFolder = DownloadsFolder;
+                    }
+                    else
+                    {
+                        DownloadsFolder = AppConfiguration.DownloadsFolder;
+                    }
+                    AppConfig.Save(AppConfiguration, AppConfigurationFileName);
                 }
                 bool isEmptyAuth = !System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
                 PreparyDirectories(isEmptyAuth);
@@ -143,6 +153,14 @@ namespace GGoogleDriveToDrive.Services
                 // Define parameters of request.
                 FilesResource.ListRequest listRequest = FilesProvider.List();
                 listRequest.PageSize = 100;
+                if (AppConfiguration.ContentPullMode == ContentPullMode.IAmOwnerOnly)
+                {
+                    listRequest.Q = "'me' in owners";
+                }
+                else if (AppConfiguration.ContentPullMode == ContentPullMode.MyDriveOnly)
+                {
+                    listRequest.Q = "'root' in parents";
+                }
                 listRequest.Fields = "nextPageToken, files(id, name, originalFilename, createdTime, modifiedTime, mimeType, size, md5Checksum, capabilities, parents)";
 
                 Google.Apis.Drive.v3.Data.FileList fileList = listRequest.Execute();
@@ -358,7 +376,7 @@ namespace GGoogleDriveToDrive.Services
             foreach (var item in gFileStack)
             {
                 subPath = Path.Combine(subPath, MakeValidFileName(item.Name));
-                CreateDirectory(item, Path.Combine(Environment.CurrentDirectory, DownloadsFolder, subPath));
+                CreateDirectory(item, Path.Combine(DownloadsFolder, subPath));
                 GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == item.Id);
                 if (googleFileInfo == null)
                 {
