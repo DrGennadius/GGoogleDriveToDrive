@@ -65,38 +65,56 @@ namespace GGoogleDriveToDrive
                 case PullContentProgressStatus.None:
                     break;
                 case PullContentProgressStatus.Processing:
+                    PrintCurrentItemProgress(pullContentProgress);
                     break;
                 case PullContentProgressStatus.Completed:
-                    Console.WriteLine($"{pullContentProgress.Status} items: {pullContentProgress.ItemsCount}.");
+                    WriteLine($"{pullContentProgress.Status} items: {pullContentProgress.ItemsCount}.");
                     break;
                 case PullContentProgressStatus.Failed:
-                    Console.WriteLine(pullContentProgress.Status);
-                    Console.WriteLine(pullContentProgress.Exception);
+                    WriteLine(pullContentProgress.Status);
+                    WriteLine(pullContentProgress.Exception);
                     break;
                 default:
                     break;
             }
+        }
+
+        private static void PrintCurrentItemProgress(PullContentProgress pullContentProgress)
+        {
+            string currentGFileName = pullContentProgress.CurrentGoogleFile?.Name;
             var currentDownloadProgress = pullContentProgress.CurrentItemDownloadProgress;
-            if (currentDownloadProgress != null)
+            if (pullContentProgress.CurrentPullingStatus == CurrentPullingStatus.FailedDownload
+                || pullContentProgress.CurrentPullingStatus == CurrentPullingStatus.FailedExport)
             {
-                switch (currentDownloadProgress.Status)
+                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus} file: '{currentGFileName}'");
+                var exception = currentDownloadProgress?.Exception;
+                if (exception != null)
                 {
-                    case DownloadStatus.NotStarted:
-                        break;
-                    case DownloadStatus.Downloading:
-                        Console.WriteLine($"[{pullContentProgress.ItemsCount}] Downloading: {currentDownloadProgress.Status} {currentDownloadProgress.BytesDownloaded} bytes.");
-                        break;
-                    case DownloadStatus.Completed:
-                        Console.WriteLine($"[{pullContentProgress.ItemsCount}] Downloading: {currentDownloadProgress.Status} {currentDownloadProgress.BytesDownloaded} bytes.");
-                        break;
-                    case DownloadStatus.Failed:
-                        Console.WriteLine($"[{pullContentProgress.ItemsCount}] Downloading: {currentDownloadProgress.Status}");
-                        Console.WriteLine(currentDownloadProgress.Exception);
-                        break;
-                    default:
-                        break;
+                    WriteLine(exception);
+                }
+                else
+                {
+                    WriteLine("An undefined error occurred.");
                 }
             }
+            else
+            {
+                string bytesDownloadedString = currentDownloadProgress != null 
+                    ? $" {currentDownloadProgress.BytesDownloaded} bytes" : "";
+                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus}{bytesDownloadedString} file: '{currentGFileName}'");
+            }
+        }
+
+        private static void WriteLine(object value)
+        {
+            Logging(value.ToString());
+            Console.WriteLine(value);
+        }
+
+        private static void WriteLine(string value)
+        {
+            Logging(value);
+            Console.WriteLine(value);
         }
 
         static void Logging(string message)

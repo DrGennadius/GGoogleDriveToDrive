@@ -193,15 +193,20 @@ namespace GGoogleDriveToDrive.Services
 
         private void PullContentToDrive(Google.Apis.Drive.v3.Data.File gFile)
         {
+            PullContentProgress.InitNewPulling(gFile);
             if (gFile.MimeType == "application/vnd.google-apps.folder")
             {
                 GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
                 if (googleFileInfo != null
                     && Directory.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
                 {
+                    PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.AlreadyPreparedFolder;
+                    ProgressChanged?.Invoke(PullContentProgress);
                     return;
                 }
                 PrepareFolder(gFile);
+                PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.PreparedFolder;
+                ProgressChanged?.Invoke(PullContentProgress);
                 return;
             }
 
@@ -218,6 +223,8 @@ namespace GGoogleDriveToDrive.Services
                     && System.IO.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
 #endif
                 {
+                    PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.AlreadyExported;
+                    ProgressChanged?.Invoke(PullContentProgress);
                     return;
                 }
             }
@@ -238,6 +245,8 @@ namespace GGoogleDriveToDrive.Services
                     && System.IO.File.Exists(Path.Combine(DownloadsFolder, googleFileInfo.LocalPath)))
 #endif
                 {
+                    PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.AlreadyDownloaded;
+                    ProgressChanged?.Invoke(PullContentProgress);
                     return;
                 }
             }
@@ -276,6 +285,11 @@ namespace GGoogleDriveToDrive.Services
                         ExecuteExport(file, filePath, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
                     }
                 }
+                else
+                {
+                    PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.SkippedExport;
+                    ProgressChanged?.Invoke(PullContentProgress);
+                }
             }
             else
             {
@@ -292,6 +306,7 @@ namespace GGoogleDriveToDrive.Services
 
         private void ExecuteExport(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
         {
+            PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.Exporting;
             var request = FilesProvider.Export(gFile.Id, mimeType);
             request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
             var downloadProgress = request.DownloadWithStatus(fileStream);
@@ -306,6 +321,7 @@ namespace GGoogleDriveToDrive.Services
 
         private void ExecuteDownload(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile)
         {
+            PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.Downloading;
             var request = FilesProvider.Get(gFile.Id);
             request.MediaDownloader.ProgressChanged += Download_ProgressChanged;
             var downloadProgress = request.DownloadWithStatus(fileStream);
@@ -472,9 +488,21 @@ namespace GGoogleDriveToDrive.Services
             }
         }
 
-        void Download_ProgressChanged(IDownloadProgress progress)
+        private void Download_ProgressChanged(IDownloadProgress progress)
         {
             PullContentProgress.CurrentItemDownloadProgress = progress;
+            if (progress.Status == DownloadStatus.Completed)
+            {
+                PullContentProgress.CurrentPullingStatus = PullContentProgress.CurrentPullingStatus == CurrentPullingStatus.Downloading 
+                    ? CurrentPullingStatus.Downloaded 
+                    : CurrentPullingStatus.Exported;
+            }
+            else if (progress.Status == DownloadStatus.Failed)
+            {
+                PullContentProgress.CurrentPullingStatus = PullContentProgress.CurrentPullingStatus == CurrentPullingStatus.Downloading
+                    ? CurrentPullingStatus.FailedDownload
+                    : CurrentPullingStatus.FailedExport;
+            }
             ProgressChanged?.Invoke(PullContentProgress);
         }
     }
