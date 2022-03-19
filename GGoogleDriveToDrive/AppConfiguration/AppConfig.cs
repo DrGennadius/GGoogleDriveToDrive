@@ -6,18 +6,38 @@ using System.IO;
 
 namespace GGoogleDriveToDrive.AppConfiguration
 {
+    /// <summary>
+    /// Application configuration.
+    /// </summary>
     public class AppConfig
     {
+        /// <summary>
+        /// Application configuration file name.
+        /// </summary>
         [JsonIgnore]
         public string AppConfigurationFileName { get; private set; }
 
+        /// <summary>
+        /// Local directory for downloading and exporting files from Google Drive.
+        /// </summary>
         public string DownloadsFolder { get; set; }
 
+        /// <summary>
+        /// Defines the scope of the loaded content. Possible options: All, IAmOwnerOnly, MyDriveOnly.
+        /// </summary>
         [JsonConverter(typeof(StringEnumConverter))]
         public ContentPullMode ContentPullMode { get; set; } = ContentPullMode.All;
 
+        /// <summary>
+        /// Used to convert types from Google to another when exporting.
+        /// </summary>
         public Dictionary<string, ExportTypeConfig> MimeTypesConvertMap { get; set; }
 
+        /// <summary>
+        /// Load the application configuration from the file path.
+        /// </summary>
+        /// <param name="path"></param>
+        /// <returns></returns>
         internal static AppConfig Load(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -37,6 +57,12 @@ namespace GGoogleDriveToDrive.AppConfiguration
             }
         }
 
+        /// <summary>
+        /// Create application configuration from the MimeTypesConvertMap instance. For support old config.
+        /// </summary>
+        /// <param name="mimeTypesConvertMap"></param>
+        /// <returns></returns>
+        [Obsolete("For old config.")]
         internal static AppConfig CreateByMimeTypesConvertMap(Dictionary<string, ExportTypeConfig> mimeTypesConvertMap)
         {
             return new AppConfig()
@@ -45,12 +71,14 @@ namespace GGoogleDriveToDrive.AppConfiguration
             };
         }
 
+        /// <summary>
+        /// Save the application configuration to the file by the path.
+        /// </summary>
+        /// <param name="appConfiguration"></param>
+        /// <param name="path"></param>
         internal static void Save(AppConfig appConfiguration, string path)
         {
-            if (string.IsNullOrEmpty(appConfiguration.AppConfigurationFileName))
-            {
-                appConfiguration.AppConfigurationFileName = path;
-            }
+            appConfiguration.AppConfigurationFileName = path;
             using (StreamWriter file = File.CreateText(path))
             {
                 JsonSerializer serializer = new JsonSerializer
@@ -59,9 +87,12 @@ namespace GGoogleDriveToDrive.AppConfiguration
                 };
                 serializer.Serialize(file, appConfiguration);
             }
-        }        
+        }
     }
 
+    /// <summary>
+    /// Content pull mode.
+    /// </summary>
     public enum ContentPullMode
     {
         /// <summary>

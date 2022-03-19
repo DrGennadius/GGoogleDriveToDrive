@@ -63,7 +63,7 @@ namespace GGoogleDriveToDrive.DataBase
             {
                 transaction = Session.BeginTransaction();
             }
-            return (transaction, isNew); 
+            return (transaction, isNew);
         }
 
         public void ResetSession()

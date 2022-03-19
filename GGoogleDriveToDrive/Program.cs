@@ -1,5 +1,4 @@
-﻿using Google.Apis.Download;
-using System;
+﻿using System;
 using GGoogleDriveToDrive.Services;
 
 #if NET45
@@ -17,48 +16,33 @@ namespace GGoogleDriveToDrive
 
         static void Main(string[] args)
         {
-            Logging("Start command.");
+            Logging($"{Environment.NewLine}Start command.");
             Init();
             Processing();
             Console.Read();
         }
 
-        static void Init()
+        private static void Init()
         {
             GoogleDriveManager.Initialize();
             GoogleDriveManager.ProgressChanged += GoogleDriveManager_ProgressChanged;
         }
 
-        static void Processing()
+        private static void Processing()
         {
-            Console.WriteLine("Processing...");
-            Logging("Processing...");
+            WriteLine("Processing...");
             var pullContentProgress = GoogleDriveManager.PullContent();
             FinishPrint(pullContentProgress);
         }
 
-        static void FinishPrint(PullContentProgress pullContentProgress)
+        private static void FinishPrint(PullContentProgress pullContentProgress)
         {
-            Console.WriteLine("Done!");
-            Logging("Done!");
-            Console.WriteLine($"Status {pullContentProgress.Status}.");
-            Logging($"Status {pullContentProgress.Status}.");
-            Console.WriteLine($"Processed {pullContentProgress.ItemsCount} items.");
-            Logging($"Processed {pullContentProgress.ItemsCount} items.");
+            WriteLine("Done!");
+            WriteLine($"Status {pullContentProgress.Status}.");
+            WriteLine($"Processed {pullContentProgress.ItemsCount} items.");
         }
 
-        static void ClearLines(int startLineCursor)
-        {
-            int currentLineCursor = Console.CursorTop;
-            for (int lineN = startLineCursor; lineN < currentLineCursor; lineN++)
-            {
-                Console.SetCursorPosition(0, lineN);
-                for (int i = 0; i < Console.WindowWidth; i++)
-                    Console.Write(" ");
-            }
-        }
-
-        static void GoogleDriveManager_ProgressChanged(PullContentProgress pullContentProgress)
+        private static void GoogleDriveManager_ProgressChanged(PullContentProgress pullContentProgress)
         {
             switch (pullContentProgress.Status)
             {
@@ -81,12 +65,16 @@ namespace GGoogleDriveToDrive
 
         private static void PrintCurrentItemProgress(PullContentProgress pullContentProgress)
         {
-            string currentGFileName = pullContentProgress.CurrentGoogleFile?.Name;
+            string currentGFileNamePart = pullContentProgress.CurrentGoogleFile?.Name;
+            if (!string.IsNullOrEmpty(currentGFileNamePart))
+            {
+                currentGFileNamePart = " file: '" + currentGFileNamePart + '\'';
+            }
             var currentDownloadProgress = pullContentProgress.CurrentItemDownloadProgress;
             if (pullContentProgress.CurrentPullingStatus == CurrentPullingStatus.FailedDownload
                 || pullContentProgress.CurrentPullingStatus == CurrentPullingStatus.FailedExport)
             {
-                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus} file: '{currentGFileName}'");
+                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus}{currentGFileNamePart}");
                 var exception = currentDownloadProgress?.Exception;
                 if (exception != null)
                 {
@@ -99,9 +87,9 @@ namespace GGoogleDriveToDrive
             }
             else
             {
-                string bytesDownloadedString = currentDownloadProgress != null 
+                string bytesDownloadedString = currentDownloadProgress != null
                     ? $" {currentDownloadProgress.BytesDownloaded} bytes" : "";
-                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus}{bytesDownloadedString} file: '{currentGFileName}'");
+                WriteLine($"[{pullContentProgress.ItemsCount}] {pullContentProgress.CurrentPullingStatus}{bytesDownloadedString}{currentGFileNamePart}");
             }
         }
 
@@ -117,7 +105,7 @@ namespace GGoogleDriveToDrive
             Console.WriteLine(value);
         }
 
-        static void Logging(string message)
+        private static void Logging(string message)
         {
             using (System.IO.StreamWriter writer = new System.IO.StreamWriter(LoggingFileName, true))
             {

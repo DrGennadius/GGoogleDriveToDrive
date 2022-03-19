@@ -28,8 +28,8 @@ namespace GGoogleDriveToDrive.Services
 
         private DriveService Service;
         private FilesResource FilesProvider;
-        private Dictionary<string, Google.Apis.Drive.v3.Data.File> FilesCache = new Dictionary<string, Google.Apis.Drive.v3.Data.File>();
-        private DbContext DbContext = new DbContext();
+        private readonly Dictionary<string, Google.Apis.Drive.v3.Data.File> GoogleFilesCache = new Dictionary<string, Google.Apis.Drive.v3.Data.File>();
+        private readonly DbContext DbContext = new DbContext();
         private PullContentProgress PullContentProgress = new PullContentProgress();
 
         /// <summary>
@@ -71,8 +71,6 @@ namespace GGoogleDriveToDrive.Services
 
         public readonly string[] Scopes = { DriveService.Scope.DriveReadonly };
 
-        public Google.Apis.Drive.v3.Data.File DownloadingFile { get; private set; }
-
         public AppConfig AppConfiguration { get; private set; }
 
         public Dictionary<string, ExportTypeConfig> MimeTypesConvertMap { get; private set; }
@@ -110,7 +108,7 @@ namespace GGoogleDriveToDrive.Services
                     AppConfig.Save(AppConfiguration, AppConfigurationFileName);
                 }
                 bool isEmptyAuth = !System.IO.File.Exists(Path.Combine(CredentialPath, "Google.Apis.Auth.OAuth2.Responses.TokenResponse-user"));
-                PreparyDirectories(isEmptyAuth);
+                PrepareWorkDirectories(isEmptyAuth);
                 UserCredential credential;
                 ClientSecrets clientSecrets = System.IO.File.Exists("client_secrets.json")
                     ? GoogleClientSecrets.FromFile("client_secrets.json").Secrets
@@ -139,7 +137,7 @@ namespace GGoogleDriveToDrive.Services
                 Console.WriteLine("Initialization failed:");
                 Console.WriteLine(ex);
             }
-            
+
         }
 
         public PullContentProgress PullContent()
@@ -211,6 +209,41 @@ namespace GGoogleDriveToDrive.Services
             }
 
             bool isGoogleType = GoogleMimeTypes.Contains(gFile.MimeType);
+            bool isSkipped = CheckItemForSkip(gFile, isGoogleType);
+            if (isSkipped)
+            {
+                return;
+            }
+
+            string fileName = isGoogleType && MimeTypesConvertMap.ContainsKey(gFile.MimeType)
+                ? gFile.Name + '.' + MimeTypesConvertMap[gFile.MimeType].FileExtension
+                : gFile.Name;
+            fileName = MakeValidPathName(fileName);
+            var parent = GetParent(gFile);
+
+            string filePath;
+            if (parent != null)
+            {
+                filePath = Path.Combine(PrepareFolder(parent), fileName);
+            }
+            else
+            {
+                filePath = fileName;
+            }
+
+            PullContentToDrive(gFile, isGoogleType, filePath);
+        }
+
+        /// <summary>
+        /// Checking if content is needed for pulling.
+        /// </summary>
+        /// <param name="gFile">Google item.</param>
+        /// <param name="isGoogleType">Is Google type of item.</param>
+        /// <returns></returns>
+        private bool CheckItemForSkip(Google.Apis.Drive.v3.Data.File gFile, bool isGoogleType)
+        {
+            bool isSkipped = false;
+
             if (isGoogleType && gFile.ModifiedTime.HasValue)
             {
                 GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
@@ -225,14 +258,14 @@ namespace GGoogleDriveToDrive.Services
                 {
                     PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.AlreadyExported;
                     ProgressChanged?.Invoke(PullContentProgress);
-                    return;
+                    isSkipped = true;
                 }
             }
             else if (!isGoogleType && !string.IsNullOrWhiteSpace(gFile.Md5Checksum))
             {
                 if (gFile.Capabilities.CanDownload.HasValue && !gFile.Capabilities.CanDownload.Value)
                 {
-                    return;
+                    isSkipped = true;
                 }
                 GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == gFile.Id);
                 if (googleFileInfo != null
@@ -247,63 +280,54 @@ namespace GGoogleDriveToDrive.Services
                 {
                     PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.AlreadyDownloaded;
                     ProgressChanged?.Invoke(PullContentProgress);
-                    return;
+                    isSkipped = true;
                 }
             }
 
-            string fileName = isGoogleType && MimeTypesConvertMap.ContainsKey(gFile.MimeType)
-                ? gFile.Name + '.' + MimeTypesConvertMap[gFile.MimeType].FileExtension
-                : gFile.Name;
-            fileName = MakeValidFileName(fileName);
+            return isSkipped;
+        }
 
-            string parentId = gFile.Parents?.FirstOrDefault();
-            var parent = !string.IsNullOrEmpty(parentId) ? GetParent(parentId) : null;
-
-            string filePath;
-            if (parent != null)
-            {
-                filePath = Path.Combine(PrepareFolder(parent), fileName);
-            }
-            else
-            {
-                filePath = fileName;
-            }
-
-            DownloadingFile = gFile;
-
-            if (isGoogleType)
-            {
-                // Only if we know what type we are converting to
-                if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
-                {
+        /// <summary>
+        /// Pull (download or export) Google Drive item to local drive.
+        /// </summary>
+        /// <param name="gFile">Google item.</param>
+        /// <param name="isGoogleType">Is Google type of item.</param>
+        /// <param name="filePath">Local file path.</param>
+        private void PullContentToDrive(Google.Apis.Drive.v3.Data.File gFile, bool isGoogleType, string filePath)
+        {
 #if NET45
-                    using (var file = Alphaleonis.Win32.Filesystem.File.Create(Path.Combine(DownloadsFolder, filePath)))
+            using (var file = Alphaleonis.Win32.Filesystem.File.Create(Path.Combine(DownloadsFolder, filePath)))
 #else
-                    using (FileStream file = new FileStream(Path.Combine(DownloadsFolder, filePath), System.IO.FileMode.Create, System.IO.FileAccess.Write))
+            using (var file = new FileStream(Path.Combine(DownloadsFolder, filePath), System.IO.FileMode.Create, System.IO.FileAccess.Write))
 #endif
+            {
+                if (isGoogleType)
+                {
+                    // Only if we know what type we are converting to
+                    if (MimeTypesConvertMap.ContainsKey(gFile.MimeType))
                     {
                         ExecuteExport(file, filePath, gFile, MimeTypesConvertMap[gFile.MimeType].MimeType);
                     }
+                    else
+                    {
+                        PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.SkippedExport;
+                        ProgressChanged?.Invoke(PullContentProgress);
+                    }
                 }
                 else
-                {
-                    PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.SkippedExport;
-                    ProgressChanged?.Invoke(PullContentProgress);
-                }
-            }
-            else
-            {
-#if NET45
-                using (var file = Alphaleonis.Win32.Filesystem.File.Create(Path.Combine(DownloadsFolder, filePath)))
-#else
-                using (var file = new FileStream(Path.Combine(DownloadsFolder, filePath), System.IO.FileMode.Create, System.IO.FileAccess.Write))
-#endif
                 {
                     ExecuteDownload(file, filePath, gFile);
                 }
             }
         }
 
+        /// <summary>
+        /// Export item from Google drive to local drive as binary file using converting.
+        /// </summary>
+        /// <param name="fileStream"></param>
+        /// <param name="filePath"></param>
+        /// <param name="gFile"></param>
+        /// <param name="mimeType"></param>
         private void ExecuteExport(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile, string mimeType)
         {
             PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.Exporting;
@@ -319,6 +343,12 @@ namespace GGoogleDriveToDrive.Services
             }
         }
 
+        /// <summary>
+        /// Export binary file from Google drive to local drive.
+        /// </summary>
+        /// <param name="fileStream"></param>
+        /// <param name="filePath"></param>
+        /// <param name="gFile"></param>
         private void ExecuteDownload(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile)
         {
             PullContentProgress.CurrentPullingStatus = CurrentPullingStatus.Downloading;
@@ -335,6 +365,14 @@ namespace GGoogleDriveToDrive.Services
             }
         }
 
+        /// <summary>
+        /// Correcting file and their info on the local file system after pulling.
+        /// </summary>
+        /// <param name="fileStream"></param>
+        /// <param name="filePath"></param>
+        /// <param name="gFile"></param>
+        /// <param name="downloadStatus"></param>
+        /// <returns></returns>
         private GoogleFileInfo CorrectFileOnFS(System.IO.FileStream fileStream, string filePath, Google.Apis.Drive.v3.Data.File gFile, DownloadStatus downloadStatus)
         {
             string path = Path.Combine(DownloadsFolder, filePath);
@@ -371,27 +409,34 @@ namespace GGoogleDriveToDrive.Services
             }
         }
 
+        /// <summary>
+        /// Prepare Google folder as a full directory in the local file system.
+        /// </summary>
+        /// <param name="gFile"></param>
+        /// <returns></returns>
         private string PrepareFolder(Google.Apis.Drive.v3.Data.File gFile)
         {
             // Check and add to cache
-            if (!FilesCache.ContainsKey(gFile.Id))
+            if (!GoogleFilesCache.ContainsKey(gFile.Id))
             {
-                FilesCache.Add(gFile.Id, gFile);
+                GoogleFilesCache.Add(gFile.Id, gFile);
             }
-
-            Stack<Google.Apis.Drive.v3.Data.File> gFileStack = new Stack<Google.Apis.Drive.v3.Data.File>();
-            gFileStack.Push(gFile);
-            FillStackByParents(gFile, gFileStack);
-
+            var gFileStack = GetStackWithParents(gFile);
             return CreateDirectories(gFile, gFileStack); ;
         }
 
+        /// <summary>
+        /// Create the directories in the local file system by the Google folders.
+        /// </summary>
+        /// <param name="gFile"></param>
+        /// <param name="gFileStack"></param>
+        /// <returns></returns>
         private string CreateDirectories(Google.Apis.Drive.v3.Data.File gFile, Stack<Google.Apis.Drive.v3.Data.File> gFileStack)
         {
             string subPath = "";
             foreach (var item in gFileStack)
             {
-                subPath = Path.Combine(subPath, MakeValidFileName(item.Name));
+                subPath = Path.Combine(subPath, MakeValidPathName(item.Name));
                 CreateDirectory(item, Path.Combine(DownloadsFolder, subPath));
                 GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == item.Id);
                 if (googleFileInfo == null)
@@ -413,6 +458,11 @@ namespace GGoogleDriveToDrive.Services
             return subPath;
         }
 
+        /// <summary>
+        /// Create the directory in the local file system by the Google folder item.
+        /// </summary>
+        /// <param name="gFile"></param>
+        /// <param name="resultFullPath"></param>
         private void CreateDirectory(Google.Apis.Drive.v3.Data.File gFile, string resultFullPath)
         {
             if (!Directory.Exists(resultFullPath))
@@ -429,46 +479,65 @@ namespace GGoogleDriveToDrive.Services
             }
         }
 
-        private void FillStackByParents(Google.Apis.Drive.v3.Data.File gFile, Stack<Google.Apis.Drive.v3.Data.File> gFileStack)
+        /// <summary>
+        /// Get stack with parents.
+        /// </summary>
+        /// <param name="gFile"></param>
+        /// <returns></returns>
+        private Stack<Google.Apis.Drive.v3.Data.File> GetStackWithParents(Google.Apis.Drive.v3.Data.File gFile)
         {
-            if (gFile.Parents != null && gFile.Parents.Count >= 0)
+            Stack<Google.Apis.Drive.v3.Data.File> gFilesStack = new Stack<Google.Apis.Drive.v3.Data.File>();
+            var parent = gFile;
+            while (parent != null)
             {
-                var parent = gFile;
-                while (true)
-                {
-                    parent = GetParent(parent.Parents[0]);
-
-                    // Stop when we find the root dir
-                    if (parent.Parents == null || parent.Parents.Count == 0)
-                    {
-                        break;
-                    }
-
-                    gFileStack.Push(parent);
-                }
+                gFilesStack.Push(parent);
+                parent = GetParent(parent);
             }
+            return gFilesStack;
         }
 
-        private Google.Apis.Drive.v3.Data.File GetParent(string id)
+        /// <summary>
+        /// Get parent of the item.
+        /// </summary>
+        /// <param name="gFile">Item.</param>
+        /// <returns></returns>
+        private Google.Apis.Drive.v3.Data.File GetParent(Google.Apis.Drive.v3.Data.File gFile)
         {
-            // Check cache
-            if (FilesCache.ContainsKey(id))
+            string parentId = gFile.Parents?.FirstOrDefault();
+            if (!string.IsNullOrEmpty(parentId))
             {
-                return FilesCache[id];
+                // Check cache
+                return GoogleFilesCache.ContainsKey(parentId)
+                    ? GoogleFilesCache[parentId]
+                    : GetItem(parentId);
             }
+            return null;
+        }
 
+        /// <summary>
+        /// Get item (Google Drive file).
+        /// </summary>
+        /// <param name="id">Item Id (Google Drive file id).</param>
+        /// <returns></returns>
+        private Google.Apis.Drive.v3.Data.File GetItem(string id)
+        {
             // Fetch file from drive
             var request = FilesProvider.Get(id);
             request.Fields = "id, name, createdTime, modifiedTime, mimeType, parents";
-            var parent = request.Execute();
+            var gFile = request.Execute();
 
             // Save in cache
-            FilesCache.Add(id, parent);
+            GoogleFilesCache.Add(id, gFile);
 
-            return parent;
+            return gFile;
         }
 
-        private string MakeValidFileName(string name)
+        /// <summary>
+        /// Get valid path name. Replace invalid chars to '_'.
+        /// </summary>
+        /// <param name="name"></param>
+        /// <returns></returns>
+        private string MakeValidPathName(string name)
         {
             string invalidChars = Regex.Escape(new string(Path.GetInvalidFileNameChars()));
             string invalidRegStr = string.Format(@"([{0}]*\.+$)|([{0}]+)", invalidChars);
@@ -476,7 +545,11 @@ namespace GGoogleDriveToDrive.Services
             return Regex.Replace(name, invalidRegStr, "_");
         }
 
-        private void PreparyDirectories(bool isRemoveDirectories = false)
+        /// <summary>
+        /// Prepare working directories.
+        /// </summary>
+        /// <param name="isRemoveDirectories">Is remove directories. If true - recurcive delete directory.</param>
+        private void PrepareWorkDirectories(bool isRemoveDirectories = false)
         {
             if (isRemoveDirectories && Directory.Exists(DownloadsFolder))
             {
@@ -493,8 +566,8 @@ namespace GGoogleDriveToDrive.Services
             PullContentProgress.CurrentItemDownloadProgress = progress;
             if (progress.Status == DownloadStatus.Completed)
             {
-                PullContentProgress.CurrentPullingStatus = PullContentProgress.CurrentPullingStatus == CurrentPullingStatus.Downloading 
-                    ? CurrentPullingStatus.Downloaded 
+                PullContentProgress.CurrentPullingStatus = PullContentProgress.CurrentPullingStatus == CurrentPullingStatus.Downloading
+                    ? CurrentPullingStatus.Downloaded
                     : CurrentPullingStatus.Exported;
             }
             else if (progress.Status == DownloadStatus.Failed)
