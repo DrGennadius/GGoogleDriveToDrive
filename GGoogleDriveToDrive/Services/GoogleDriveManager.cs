@@ -21,6 +21,9 @@ using System.IO;
 
 namespace GGoogleDriveToDrive.Services
 {
+    /// <summary>
+    /// Google Drive Manager.
+    /// </summary>
     public class GoogleDriveManager
     {
         private const string ClientId = "463415722618-97eb83nbndd7lpdmr5jo7nesd0qnb6na.apps.googleusercontent.com";
@@ -80,8 +83,13 @@ namespace GGoogleDriveToDrive.Services
         /// <summary>
         /// Initialize. Prepare directories, read config, authorization and init service.
         /// </summary>
-        public void Initialize()
+        /// <param name="downloadsDirectory">Directory for dowloads content.</param>
+        public void Initialize(string downloadsDirectory = "")
         {
+            if (!string.IsNullOrEmpty(downloadsDirectory))
+            {
+                DownloadsFolder = downloadsDirectory;
+            }
             try
             {
                 if (System.IO.File.Exists(MimeTypesConvertMapConfigFileName) && !System.IO.File.Exists(AppConfigurationFileName))
@@ -103,6 +111,10 @@ namespace GGoogleDriveToDrive.Services
                     if (string.IsNullOrWhiteSpace(AppConfiguration.DownloadsFolder))
                     {
                         AppConfiguration.DownloadsFolder = DownloadsFolder;
+                    }
+                    else if (!string.IsNullOrEmpty(downloadsDirectory))
+                    {
+                        AppConfiguration.DownloadsFolder = downloadsDirectory;
                     }
                     else
                     {
@@ -140,7 +152,6 @@ namespace GGoogleDriveToDrive.Services
                 Console.WriteLine("Initialization failed:");
                 Console.WriteLine(ex);
             }
-
         }
 
         /// <summary>

@@ -17,14 +17,21 @@ namespace GGoogleDriveToDrive
         static void Main(string[] args)
         {
             Logging($"{Environment.NewLine}Start command.");
-            Init();
+            if (args.Length == 1)
+            {
+                Init(args[0]);
+            }
+            else
+            {
+                Init();
+            }
             Processing();
             Console.Read();
         }
 
-        private static void Init()
+        private static void Init(string downloadsDirectory = "")
         {
-            GoogleDriveManager.Initialize();
+            GoogleDriveManager.Initialize(downloadsDirectory);
             GoogleDriveManager.ProgressChanged += GoogleDriveManager_ProgressChanged;
         }
 

@@ -44,3 +44,12 @@ The application configuration is presented in the file 'app_config.json'.
 | ContentPullMode | Defines the scope of the loaded content. Possible options: All, IAmOwnerOnly, MyDriveOnly. |
 | MimeTypesConvertMap | Used to convert types from Google to another when exporting. Google documents and corresponding export MIME types see [here](https://developers.google.com/drive/api/v3/ref-export-formats?hl=en). |
 
+
+# Run in commandline
+
+
+(Optional) You can specify a folder to download the content.
+
+```cmd
+.\GGoogleDriveToDrive.exe "D:\GoogleDownloads"
+```
