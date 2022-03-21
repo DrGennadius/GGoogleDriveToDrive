@@ -77,6 +77,9 @@ namespace GGoogleDriveToDrive.Services
 
         public event Action<PullContentProgress> ProgressChanged;
 
+        /// <summary>
+        /// Initialize. Prepare directories, read config, authorization and init service.
+        /// </summary>
         public void Initialize()
         {
             try
@@ -140,6 +143,10 @@ namespace GGoogleDriveToDrive.Services
 
         }
 
+        /// <summary>
+        /// Process of pulling content to local drive.
+        /// </summary>
+        /// <returns></returns>
         public PullContentProgress PullContent()
         {
             PullContentProgress = new PullContentProgress
@@ -191,51 +198,9 @@ namespace GGoogleDriveToDrive.Services
         }
 
         /// <summary>
-        /// Adjust cache directories (change LastWriteTime).
+        /// Process of pulling content to local drive for particular item (Goodle Drive file).
         /// </summary>
-        private void AdjustCacheDirectories()
-        {
-            var folders = GoogleFilesCache.Select(x => x.Value)
-                                          .Where(x => x.MimeType == "application/vnd.google-apps.folder")
-                                          .ToArray();
-
-            var myDrive = folders.FirstOrDefault(x => x.Name == "My Drive");
-            if (myDrive != null)
-            {
-                AdjustSubDirectories(folders, myDrive);
-            }
-        }
-
-        private void AdjustSubDirectories(Google.Apis.Drive.v3.Data.File[] folders, Google.Apis.Drive.v3.Data.File parent)
-        {
-            var children = folders.Where(x => x.Parents != null && x.Parents.FirstOrDefault() == parent.Id).ToArray();
-            foreach (var child in children)
-            {
-                AdjustSubDirectories(folders, child);
-            }
-            AdjustDirectory(parent);
-        }
-
-        private void AdjustDirectory(Google.Apis.Drive.v3.Data.File folder)
-        {
-            if (folder.ModifiedTime.HasValue)
-            {
-                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == folder.Id);
-                if (googleFileInfo != null && !string.IsNullOrEmpty(googleFileInfo.LocalPath))
-                {
-                    string path = Path.Combine(DownloadsFolder, googleFileInfo.LocalPath);
-                    if (Directory.Exists(path))
-                    {
-                        DirectoryInfo directoryInfo = new DirectoryInfo(path);
-                        if (directoryInfo != null)
-                        {
-                            directoryInfo.LastWriteTime = folder.ModifiedTime.Value;
-                        }
-                    }
-                }
-            }
-        }
-
+        /// <param name="gFile"></param>
         private void PullContentToDrive(Google.Apis.Drive.v3.Data.File gFile)
         {
             PullContentProgress.InitNewPulling(gFile);
@@ -605,6 +570,61 @@ namespace GGoogleDriveToDrive.Services
             if (!Directory.Exists(DownloadsFolder))
             {
                 Directory.CreateDirectory(DownloadsFolder);
+            }
+        }
+
+        /// <summary>
+        /// Adjust cache directories - change LastWriteTime by ModifiedTime from Google Drive.
+        /// </summary>
+        private void AdjustCacheDirectories()
+        {
+            var folders = GoogleFilesCache.Select(x => x.Value)
+                                          .Where(x => x.MimeType == "application/vnd.google-apps.folder")
+                                          .ToArray();
+
+            var myDrive = folders.FirstOrDefault(x => x.Name == "My Drive");
+            if (myDrive != null)
+            {
+                AdjustSubDirectories(folders, myDrive);
+            }
+        }
+
+        /// <summary>
+        /// Adjust cache directories - change LastWriteTime by ModifiedTime from Google Drive (recursive).
+        /// </summary>
+        /// <param name="folders"></param>
+        /// <param name="parent"></param>
+        private void AdjustSubDirectories(Google.Apis.Drive.v3.Data.File[] folders, Google.Apis.Drive.v3.Data.File parent)
+        {
+            var children = folders.Where(x => x.Parents != null && x.Parents.FirstOrDefault() == parent.Id).ToArray();
+            foreach (var child in children)
+            {
+                AdjustSubDirectories(folders, child);
+            }
+            AdjustDirectory(parent);
+        }
+
+        /// <summary>
+        /// Change LastWriteTime by ModifiedTime from Google Drive for the directory.
+        /// </summary>
+        /// <param name="folder"></param>
+        private void AdjustDirectory(Google.Apis.Drive.v3.Data.File folder)
+        {
+            if (folder.ModifiedTime.HasValue)
+            {
+                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == folder.Id);
+                if (googleFileInfo != null && !string.IsNullOrEmpty(googleFileInfo.LocalPath))
+                {
+                    string path = Path.Combine(DownloadsFolder, googleFileInfo.LocalPath);
+                    if (Directory.Exists(path))
+                    {
+                        DirectoryInfo directoryInfo = new DirectoryInfo(path);
+                        if (directoryInfo != null)
+                        {
+                            directoryInfo.LastWriteTime = folder.ModifiedTime.Value;
+                        }
+                    }
+                }
             }
         }
 
