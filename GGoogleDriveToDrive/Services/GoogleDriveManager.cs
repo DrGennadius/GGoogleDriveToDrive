@@ -178,6 +178,7 @@ namespace GGoogleDriveToDrive.Services
                     fileList = listRequest.Execute();
                     gFiles = fileList.Files;
                 }
+                AdjustCacheDirectories();
                 PullContentProgress.Status = PullContentProgressStatus.Completed;
             }
             catch (Exception ex)
@@ -187,6 +188,52 @@ namespace GGoogleDriveToDrive.Services
             }
 
             return PullContentProgress;
+        }
+
+        /// <summary>
+        /// Adjust cache directories (change LastWriteTime).
+        /// </summary>
+        private void AdjustCacheDirectories()
+        {
+            var folders = GoogleFilesCache.Select(x => x.Value)
+                                          .Where(x => x.MimeType == "application/vnd.google-apps.folder")
+                                          .ToArray();
+
+            var myDrive = folders.FirstOrDefault(x => x.Name == "My Drive");
+            if (myDrive != null)
+            {
+                AdjustSubDirectories(folders, myDrive);
+            }
+        }
+
+        private void AdjustSubDirectories(Google.Apis.Drive.v3.Data.File[] folders, Google.Apis.Drive.v3.Data.File parent)
+        {
+            var children = folders.Where(x => x.Parents != null && x.Parents.FirstOrDefault() == parent.Id).ToArray();
+            foreach (var child in children)
+            {
+                AdjustSubDirectories(folders, child);
+            }
+            AdjustDirectory(parent);
+        }
+
+        private void AdjustDirectory(Google.Apis.Drive.v3.Data.File folder)
+        {
+            if (folder.ModifiedTime.HasValue)
+            {
+                GoogleFileInfo googleFileInfo = DbContext.GoogleFiles.Query().SingleOrDefault(x => x.GoogleId == folder.Id);
+                if (googleFileInfo != null && !string.IsNullOrEmpty(googleFileInfo.LocalPath))
+                {
+                    string path = Path.Combine(DownloadsFolder, googleFileInfo.LocalPath);
+                    if (Directory.Exists(path))
+                    {
+                        DirectoryInfo directoryInfo = new DirectoryInfo(path);
+                        if (directoryInfo != null)
+                        {
+                            directoryInfo.LastWriteTime = folder.ModifiedTime.Value;
+                        }
+                    }
+                }
+            }
         }
 
         private void PullContentToDrive(Google.Apis.Drive.v3.Data.File gFile)
